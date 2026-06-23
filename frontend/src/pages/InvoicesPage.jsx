@@ -1995,8 +1995,7 @@ const renderEmailLogAttachments = (attachmentsJson) => {
                 Cerrar detalle
               </button>
             </div>
-          )}
-        
+          )}        
             </div>
           </div>
         </div>
@@ -2270,8 +2269,6 @@ const renderEmailLogAttachments = (attachmentsJson) => {
             </div>
           )}
         </div>
-
-        
       </section>
     </div>
   );

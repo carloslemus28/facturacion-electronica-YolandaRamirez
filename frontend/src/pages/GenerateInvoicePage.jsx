@@ -439,8 +439,7 @@ function GenerateInvoicePage() {
   }, [editInvoiceId, loading]);
 
   useEffect(() => {
-    if (!userContext?.company?.allowedDocumentTypes) return;
-    
+    if (!userContext?.company?.allowedDocumentTypes) return;    
     if (isEditMode && !editLoadedRef.current) return;
 
     const allowed = parseAllowedDocumentTypes(userContext.company.allowedDocumentTypes);
