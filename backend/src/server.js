@@ -13,6 +13,12 @@ const startServer = async () => {
 
   loadModels();
 
+  // Los proyectos ya desplegados pueden tener tablas antiguas sin columnas nuevas.
+  // Sequelize intenta crear índices durante sync(); si la columna aún no existe,
+  // MySQL falla antes de que el backend termine de arrancar.
+  // Por eso actualizamos columnas runtime antes de sync() y repetimos después
+  // para cubrir bases nuevas creadas desde cero.
+  await ensureRuntimeSchema();
   await sequelize.sync();
   await ensureRuntimeSchema();
 

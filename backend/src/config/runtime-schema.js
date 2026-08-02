@@ -1,11 +1,28 @@
 const { DataTypes } = require('sequelize');
 const { sequelize } = require('./database');
 
+const isMissingTableError = (error) =>
+  error?.original?.code === 'ER_NO_SUCH_TABLE' ||
+  error?.parent?.code === 'ER_NO_SUCH_TABLE' ||
+  error?.code === 'ER_NO_SUCH_TABLE';
+
+const describeTableIfExists = async (queryInterface, tableName) => {
+  try {
+    return await queryInterface.describeTable(tableName);
+  } catch (error) {
+    if (isMissingTableError(error)) {
+      return null;
+    }
+
+    throw error;
+  }
+};
+
 const ensureColumn = async ({ tableName, columnName, definition }) => {
   const queryInterface = sequelize.getQueryInterface();
-  const table = await queryInterface.describeTable(tableName);
+  const table = await describeTableIfExists(queryInterface, tableName);
 
-  if (table[columnName]) {
+  if (!table || table[columnName]) {
     return false;
   }
 
