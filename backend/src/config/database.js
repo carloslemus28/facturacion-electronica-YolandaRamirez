@@ -1,5 +1,12 @@
 const { Sequelize } = require('sequelize');
 
+const getPositiveInteger = (value, fallback) => {
+  const parsed = Number.parseInt(value, 10);
+
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+};
+
+
 const sequelize = new Sequelize(
   process.env.MYSQLDATABASE || process.env.MYSQL_DATABASE,
   process.env.MYSQLUSER || process.env.MYSQL_USER,
@@ -16,11 +23,14 @@ const sequelize = new Sequelize(
     logging: process.env.NODE_ENV === 'development' ? console.log : false,
     timezone: '-06:00',
     pool: {
-      max: Number(process.env.DB_POOL_MAX || 5),
-      min: Number(process.env.DB_POOL_MIN || 0),
-      acquire: Number(process.env.DB_POOL_ACQUIRE_MS || 30000),
-      idle: Number(process.env.DB_POOL_IDLE_MS || 10000),
-      evict: Number(process.env.DB_POOL_EVICT_MS || 10000)
+      max: getPositiveInteger(process.env.DB_POOL_MAX, 4),
+      min: 0,
+      acquire: getPositiveInteger(process.env.DB_POOL_ACQUIRE_MS, 30000),
+      idle: getPositiveInteger(process.env.DB_POOL_IDLE_MS, 5000),
+      evict: getPositiveInteger(process.env.DB_POOL_EVICT_MS, 5000)
+    },
+    dialectOptions: {
+      connectTimeout: getPositiveInteger(process.env.DB_CONNECT_TIMEOUT_MS, 15000)
     },
     define: {
       timestamps: true,
@@ -31,12 +41,6 @@ const sequelize = new Sequelize(
 
 const sleep = (milliseconds) =>
   new Promise((resolve) => setTimeout(resolve, milliseconds));
-
-const getPositiveInteger = (value, fallback) => {
-  const parsed = Number.parseInt(value, 10);
-
-  return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
-};
 
 const testConnection = async () => {
   const maxAttempts = getPositiveInteger(

@@ -1,4 +1,4 @@
-const { Op, literal } = require('sequelize');
+const { Op, literal, fn, col } = require('sequelize');
 const { v4: uuidv4 } = require('uuid');
 const { sequelize } = require('../../config/database');
 
@@ -804,6 +804,47 @@ const buildInvoiceVisibilityInclude = (user) => {
 };
 
 
+const buildInvoiceVisibilityWhere = async (currentUser) => {
+  const where = {
+    companyId: currentUser.company.id
+  };
+
+  if (!isAdminUser(currentUser)) {
+    const establishmentId = getUserEstablishmentId(currentUser);
+
+    if (!establishmentId) {
+      const error = new Error('El usuario no tiene establecimiento o sucursal asignada');
+      error.statusCode = 403;
+      throw error;
+    }
+
+    const pointOfSales = await PointOfSale.findAll({
+      attributes: ['id'],
+      where: {
+        companyId: currentUser.company.id,
+        establishmentId
+      },
+      raw: true
+    });
+
+    where.pointOfSaleId = {
+      [Op.in]: pointOfSales.map((pointOfSale) => pointOfSale.id)
+    };
+  }
+
+  return where;
+};
+
+const DASHBOARD_INVOICE_ATTRIBUTES = [
+  'id',
+  'customerId',
+  'documentTypeName',
+  'controlNumber',
+  'status',
+  'issuedAt',
+  'total'
+];
+
 const INVOICE_LIST_ATTRIBUTES = [
   'id',
   'companyId',
@@ -1532,10 +1573,12 @@ const listInvoices = async ({ user, startDate, endDate }) => {
     throw error;
   }
 
+  const visibilityWhere = await buildInvoiceVisibilityWhere(currentUser);
+
   const invoices = await Invoice.findAll({
     attributes: INVOICE_LIST_ATTRIBUTES,
     where: {
-      companyId: currentUser.company.id,
+      ...visibilityWhere,
       issuedAt: getIssuedAtRangeForList({
         startDate,
         endDate
@@ -1547,7 +1590,7 @@ const listInvoices = async ({ user, startDate, endDate }) => {
         as: 'customer',
         attributes: CUSTOMER_LIST_ATTRIBUTES
       },
-      buildInvoiceVisibilityInclude(currentUser),
+      buildPointOfSaleInclude(),
       {
         model: User,
         as: 'user',
@@ -1625,25 +1668,39 @@ const getDashboardSummary = async ({ user }) => {
     throw error;
   }
 
-  const invoices = await Invoice.findAll({
-    attributes: INVOICE_LIST_ATTRIBUTES,
-    where: {
-      companyId: currentUser.company.id,
-      issuedAt: getCurrentMonthIssuedAtRange()
-    },
+  const visibilityWhere = await buildInvoiceVisibilityWhere(currentUser);
+  const dashboardWhere = {
+    ...visibilityWhere,
+    issuedAt: getCurrentMonthIssuedAtRange()
+  };
+
+  const summaryRows = await Invoice.findAll({
+    attributes: [
+      'status',
+      [fn('COUNT', col('Invoice.id')), 'count'],
+      [fn('SUM', col('Invoice.total')), 'amount']
+    ],
+    where: dashboardWhere,
+    group: ['status'],
+    raw: true
+  });
+
+  const recentInvoices = await Invoice.findAll({
+    attributes: DASHBOARD_INVOICE_ATTRIBUTES,
+    where: dashboardWhere,
     include: [
       {
         model: Customer,
         as: 'customer',
-        attributes: CUSTOMER_LIST_ATTRIBUTES
-      },
-      buildInvoiceVisibilityInclude(currentUser)
+        attributes: ['id', 'name']
+      }
     ],
-    order: [['issuedAt', 'DESC']]
+    order: [['issuedAt', 'DESC']],
+    limit: 5
   });
 
   const summary = {
-    totalDocuments: invoices.length,
+    totalDocuments: 0,
     generated: 0,
     signed: 0,
     transmitted: 0,
@@ -1653,38 +1710,41 @@ const getDashboardSummary = async ({ user }) => {
     totalAmount: 0,
     generatedAmount: 0,
     acceptedAmount: 0,
-    recentInvoices: invoices.slice(0, 5)
+    recentInvoices
   };
 
-  for (const invoice of invoices) {
-    const total = Number(invoice.total || 0);
+  for (const row of summaryRows) {
+    const status = row.status;
+    const count = Number(row.count || 0);
+    const amount = Number(row.amount || 0);
 
-    summary.totalAmount += total;
+    summary.totalDocuments += count;
+    summary.totalAmount += amount;
 
-    if (invoice.status === 'GENERADO') {
-      summary.generated += 1;
-      summary.generatedAmount += total;
+    if (status === 'GENERADO') {
+      summary.generated += count;
+      summary.generatedAmount += amount;
     }
 
-    if (invoice.status === 'FIRMADO') {
-      summary.signed += 1;
+    if (status === 'FIRMADO') {
+      summary.signed += count;
     }
 
-    if (invoice.status === 'TRANSMITIDO') {
-      summary.transmitted += 1;
+    if (status === 'TRANSMITIDO') {
+      summary.transmitted += count;
     }
 
-    if (invoice.status === 'ACEPTADO') {
-      summary.accepted += 1;
-      summary.acceptedAmount += total;
+    if (status === 'ACEPTADO') {
+      summary.accepted += count;
+      summary.acceptedAmount += amount;
     }
 
-    if (invoice.status === 'RECHAZADO') {
-      summary.rejected += 1;
+    if (status === 'RECHAZADO') {
+      summary.rejected += count;
     }
 
-    if (invoice.status === 'ANULADO') {
-      summary.annulled += 1;
+    if (status === 'ANULADO') {
+      summary.annulled += count;
     }
   }
 
@@ -1700,10 +1760,12 @@ const listAvailableDocumentsForCreditNote = async ({ user }) => {
     throw error;
   }
 
+  const visibilityWhere = await buildInvoiceVisibilityWhere(currentUser);
+
   const invoices = await Invoice.findAll({
     attributes: INVOICE_LIST_ATTRIBUTES,
     where: {
-      companyId: currentUser.company.id,
+      ...visibilityWhere,
       documentTypeCode: '03',
       status: 'ACEPTADO'
     },
@@ -1713,7 +1775,7 @@ const listAvailableDocumentsForCreditNote = async ({ user }) => {
         as: 'customer',
         attributes: CUSTOMER_LIST_ATTRIBUTES
       },
-      buildInvoiceVisibilityInclude(currentUser),
+      buildPointOfSaleInclude(),
       {
         model: User,
         as: 'user',

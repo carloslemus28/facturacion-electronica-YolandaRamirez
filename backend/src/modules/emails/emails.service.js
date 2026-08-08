@@ -1,5 +1,12 @@
 const nodemailer = require('nodemailer');
 
+const getPositiveInteger = (value, fallback) => {
+  const parsed = Number.parseInt(value, 10);
+
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+};
+
+
 const invoicesService = require('../invoices/invoices.service');
 const dtePdfService = require('../dte/dte-pdf.service');
 const dteJsonService = require('../dte/dte-json.service');
@@ -66,6 +73,9 @@ const createTransporter = () => {
     port: config.port,
     secure: config.secure,
     auth: config.auth,
+    connectionTimeout: getPositiveInteger(process.env.SMTP_CONNECTION_TIMEOUT_MS, 10000),
+    greetingTimeout: getPositiveInteger(process.env.SMTP_GREETING_TIMEOUT_MS, 10000),
+    socketTimeout: getPositiveInteger(process.env.SMTP_SOCKET_TIMEOUT_MS, 20000),
     tls: {
       rejectUnauthorized: false
     }
@@ -369,9 +379,11 @@ const sendInvoiceEmail = async ({ id, user, to, subject, message }) => {
     user
   });
 
+  let transporter = null;
+
   try {
     const smtpConfig = getSmtpConfig();
-    const transporter = createTransporter();
+    transporter = createTransporter();
 
     const mailOptions = {
       from: `"${smtpConfig.fromName}" <${smtpConfig.fromEmail}>`,
@@ -425,6 +437,10 @@ const sendInvoiceEmail = async ({ id, user, to, subject, message }) => {
     const nextError = new Error(`No se pudo enviar el correo: ${error.message}`);
     nextError.statusCode = error.statusCode || 500;
     throw nextError;
+  } finally {
+    if (transporter) {
+      transporter.close();
+    }
   }
 };
 
