@@ -13,6 +13,13 @@ router.get(
 );
 
 router.get(
+  '/export/csv',
+  authenticate,
+  authorize('PRODUCTS_MANAGE'),
+  productsController.exportProductsCsv
+);
+
+router.get(
   '/:id',
   authenticate,
   authorize('PRODUCTS_MANAGE'),

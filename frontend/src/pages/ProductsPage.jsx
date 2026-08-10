@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import toast from 'react-hot-toast';
 import {
   Box,
+  Download,
   Edit,
   Loader2,
   PackagePlus,
@@ -13,6 +14,7 @@ import {
 
 import {
   createProductRequest,
+  exportProductsCsvRequest,
   getProductsRequest,
   updateProductRequest
 } from '../api/products.api';
@@ -53,6 +55,7 @@ function ProductsPage() {
 
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [exporting, setExporting] = useState(false);
 
   const isEditing = Boolean(editingId);
   const isService = form.itemType === 'SERVICIO';
@@ -237,6 +240,43 @@ function ProductsPage() {
     await loadProducts();
   };
 
+  const downloadCsvResponse = (response, defaultFilename) => {
+    const disposition = response.headers?.['content-disposition'] || '';
+    const filenameMatch = disposition.match(/filename="?([^";]+)"?/i);
+    const filename = filenameMatch?.[1] || defaultFilename;
+    const url = window.URL.createObjectURL(new Blob([response.data], {
+      type: 'text/csv;charset=utf-8'
+    }));
+    const link = document.createElement('a');
+
+    link.href = url;
+    link.setAttribute('download', filename);
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    window.URL.revokeObjectURL(url);
+  };
+
+  const handleExportCsv = async () => {
+    try {
+      setExporting(true);
+
+      const params = {
+        q,
+        itemType: itemTypeFilter
+      };
+
+      const response = await exportProductsCsvRequest(params);
+      downloadCsvResponse(response, `productos-servicios-${new Date().toISOString().slice(0, 10)}.csv`);
+      toast.success('Listado de productos y servicios descargado correctamente');
+    } catch (error) {
+      console.error('Error descargando productos:', error);
+      toast.error('No se pudo descargar el listado de productos y servicios');
+    } finally {
+      setExporting(false);
+    }
+  };
+
   const formatMoney = (value) => {
     const number = Number(value || 0);
 
@@ -264,13 +304,26 @@ function ProductsPage() {
           </div>
         </div>
 
-        <button
-          onClick={loadProducts}
-          className="inline-flex items-center justify-center gap-2 bg-white border rounded-xl px-4 py-3 text-gray-700 hover:bg-gray-50"
-        >
-          <RefreshCcw size={18} />
-          Actualizar
-        </button>
+        <div className="flex flex-col sm:flex-row gap-3">
+          <button
+            type="button"
+            onClick={handleExportCsv}
+            disabled={exporting}
+            className="inline-flex items-center justify-center gap-2 bg-emerald-700 text-white rounded-xl px-4 py-3 font-semibold hover:bg-emerald-600 disabled:opacity-70"
+          >
+            {exporting ? <Loader2 className="animate-spin" size={18} /> : <Download size={18} />}
+            Descargar CSV
+          </button>
+
+          <button
+            type="button"
+            onClick={loadProducts}
+            className="inline-flex items-center justify-center gap-2 bg-white border rounded-xl px-4 py-3 text-gray-700 hover:bg-gray-50"
+          >
+            <RefreshCcw size={18} />
+            Actualizar
+          </button>
+        </div>
       </section>
 
       <section className="grid xl:grid-cols-[430px_1fr] gap-6">

@@ -8,6 +8,8 @@ const Company = require('../companies/company.model');
 const Establishment = require('../companies/establishment.model');
 const PointOfSale = require('../companies/point-of-sale.model');
 
+const CSV_EXPORT_BATCH_SIZE = 500;
+
 const VALID_DOCUMENT_TYPES = [
   'SIN_DOCUMENTO',
   'DUI',
@@ -198,6 +200,124 @@ const buildVisibilityWhere = async ({ user, requestedEstablishmentId = '' }) => 
   where.establishmentId = user.pointOfSale.establishmentId;
 
   return where;
+};
+
+const CUSTOMER_CSV_COLUMNS = [
+  { key: 'id', header: 'id' },
+  { key: 'establishmentId', header: 'establishmentId' },
+  { key: 'customerType', header: 'customerType' },
+  { key: 'documentType', header: 'documentType' },
+  { key: 'documentNumber', header: 'documentNumber' },
+  { key: 'nrc', header: 'nrc' },
+  { key: 'name', header: 'name' },
+  { key: 'commercialName', header: 'commercialName' },
+  { key: 'economicActivityCode', header: 'economicActivityCode' },
+  { key: 'economicActivityName', header: 'economicActivityName' },
+  { key: 'secondaryEconomicActivityCode', header: 'secondaryEconomicActivityCode' },
+  { key: 'secondaryEconomicActivityName', header: 'secondaryEconomicActivityName' },
+  { key: 'tertiaryEconomicActivityCode', header: 'tertiaryEconomicActivityCode' },
+  { key: 'tertiaryEconomicActivityName', header: 'tertiaryEconomicActivityName' },
+  { key: 'email', header: 'email' },
+  { key: 'secondaryEmail', header: 'secondaryEmail' },
+  { key: 'phone', header: 'phone' },
+  { key: 'phoneCountryCode', header: 'phoneCountryCode' },
+  { key: 'phoneDialCode', header: 'phoneDialCode' },
+  { key: 'phoneNationalNumber', header: 'phoneNationalNumber' },
+  { key: 'departmentCode', header: 'departmentCode' },
+  { key: 'departmentName', header: 'departmentName' },
+  { key: 'districtName', header: 'districtName' },
+  { key: 'municipalityCode', header: 'municipalityCode' },
+  { key: 'municipalityName', header: 'municipalityName' },
+  { key: 'addressComplement', header: 'addressComplement' },
+  { key: 'countryCode', header: 'countryCode' },
+  { key: 'isActive', header: 'isActive' },
+  { key: 'createdAt', header: 'createdAt' },
+  { key: 'updatedAt', header: 'updatedAt' }
+];
+
+const formatCsvValue = (value) => {
+  if (value === undefined || value === null) return '';
+
+  if (value instanceof Date) {
+    return value.toISOString();
+  }
+
+  const stringValue = String(value).replace(/\r?\n|\r/g, ' ').trim();
+
+  if (/[",;\n]/.test(stringValue)) {
+    return `"${stringValue.replace(/"/g, '""')}"`;
+  }
+
+  return stringValue;
+};
+
+const buildCsvRow = (columns, row) => {
+  return `${columns.map((column) => formatCsvValue(row[column.key])).join(',')}\n`;
+};
+
+const buildCustomerExportWhere = async ({ query = {}, user }) => {
+  const currentUser = await resolveUserContext(user);
+  const { q = '', isActive = '', establishmentId = '' } = query;
+
+  const where = await buildVisibilityWhere({
+    user: currentUser,
+    requestedEstablishmentId: establishmentId
+  });
+
+  if (q) {
+    where[Op.or] = [
+      { name: { [Op.like]: `%${q}%` } },
+      { documentNumber: { [Op.like]: `%${q}%` } },
+      { nrc: { [Op.like]: `%${q}%` } },
+      { email: { [Op.like]: `%${q}%` } },
+      { secondaryEmail: { [Op.like]: `%${q}%` } }
+    ];
+  }
+
+  if (isActive !== '') {
+    where.isActive = isActive === 'true' || isActive === true;
+  }
+
+  return where;
+};
+
+const exportCustomersCsv = async ({ query = {}, user, stream }) => {
+  const where = await buildCustomerExportWhere({
+    query,
+    user
+  });
+
+  const attributes = CUSTOMER_CSV_COLUMNS.map((column) => column.key);
+
+  stream.write('﻿');
+  stream.write(`${CUSTOMER_CSV_COLUMNS.map((column) => column.header).join(',')}\n`);
+
+  let lastId = 0;
+
+  while (true) {
+    const rows = await Customer.findAll({
+      where: {
+        ...where,
+        id: {
+          [Op.gt]: lastId
+        }
+      },
+      attributes,
+      order: [['id', 'ASC']],
+      limit: CSV_EXPORT_BATCH_SIZE,
+      raw: true
+    });
+
+    if (rows.length === 0) {
+      break;
+    }
+
+    rows.forEach((row) => {
+      stream.write(buildCsvRow(CUSTOMER_CSV_COLUMNS, row));
+    });
+
+    lastId = rows[rows.length - 1].id;
+  }
 };
 
 const inferCustomerType = (data) => {
@@ -632,5 +752,6 @@ module.exports = {
   listCustomers,
   getCustomerById,
   createCustomer,
-  updateCustomer
+  updateCustomer,
+  exportCustomersCsv
 };

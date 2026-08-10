@@ -18,6 +18,32 @@ const listCustomers = async (req, res, next) => {
   }
 };
 
+
+const exportCustomersCsv = async (req, res, next) => {
+  try {
+    const filename = `clientes-${new Date().toISOString().slice(0, 10)}.csv`;
+
+    res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+    res.setHeader('Cache-Control', 'no-store');
+
+    await customersService.exportCustomersCsv({
+      query: req.query,
+      user: req.user,
+      stream: res
+    });
+
+    res.end();
+  } catch (error) {
+    if (res.headersSent) {
+      res.destroy(error);
+      return;
+    }
+
+    next(error);
+  }
+};
+
 const getCustomerById = async (req, res, next) => {
   try {
     const customer = await customersService.getCustomerById(req.params.id, {
@@ -69,6 +95,7 @@ const updateCustomer = async (req, res, next) => {
 
 module.exports = {
   listCustomers,
+  exportCustomersCsv,
   getCustomerById,
   createCustomer,
   updateCustomer

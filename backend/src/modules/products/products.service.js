@@ -1,5 +1,7 @@
 const { Op } = require('sequelize');
 
+const CSV_EXPORT_BATCH_SIZE = 500;
+
 const Product = require('./product.model');
 const User = require('../users/user.model');
 const Role = require('../users/role.model');
@@ -175,6 +177,112 @@ const buildVisibilityWhere = async ({ user, requestedEstablishmentId = '' }) => 
   where.establishmentId = user.pointOfSale.establishmentId;
 
   return where;
+};
+
+const PRODUCT_CSV_COLUMNS = [
+  { key: 'id', header: 'id' },
+  { key: 'establishmentId', header: 'establishmentId' },
+  { key: 'code', header: 'code' },
+  { key: 'itemType', header: 'itemType' },
+  { key: 'name', header: 'name' },
+  { key: 'description', header: 'description' },
+  { key: 'unitOfMeasure', header: 'unitOfMeasure' },
+  { key: 'unitOfMeasureName', header: 'unitOfMeasureName' },
+  { key: 'purchasePrice', header: 'purchasePrice' },
+  { key: 'salePrice', header: 'salePrice' },
+  { key: 'unitPrice', header: 'unitPrice' },
+  { key: 'appliesIva', header: 'appliesIva' },
+  { key: 'stock', header: 'stock' },
+  { key: 'isActive', header: 'isActive' },
+  { key: 'createdAt', header: 'createdAt' },
+  { key: 'updatedAt', header: 'updatedAt' }
+];
+
+const formatCsvValue = (value) => {
+  if (value === undefined || value === null) return '';
+
+  if (value instanceof Date) {
+    return value.toISOString();
+  }
+
+  const stringValue = String(value).replace(/\r?\n|\r/g, ' ').trim();
+
+  if (/[",;\n]/.test(stringValue)) {
+    return `"${stringValue.replace(/"/g, '""')}"`;
+  }
+
+  return stringValue;
+};
+
+const buildCsvRow = (columns, row) => {
+  return `${columns.map((column) => formatCsvValue(row[column.key])).join(',')}\n`;
+};
+
+const buildProductExportWhere = async ({ query = {}, user }) => {
+  const currentUser = await resolveUserContext(user);
+  const { q = '', itemType = '', isActive = '', establishmentId = '' } = query;
+
+  const where = await buildVisibilityWhere({
+    user: currentUser,
+    requestedEstablishmentId: establishmentId
+  });
+
+  if (q) {
+    where[Op.or] = [
+      { code: { [Op.like]: `%${q}%` } },
+      { name: { [Op.like]: `%${q}%` } },
+      { description: { [Op.like]: `%${q}%` } }
+    ];
+  }
+
+  if (itemType) {
+    where.itemType = itemType;
+  }
+
+  if (isActive !== '') {
+    where.isActive = isActive === 'true' || isActive === true;
+  }
+
+  return where;
+};
+
+const exportProductsCsv = async ({ query = {}, user, stream }) => {
+  const where = await buildProductExportWhere({
+    query,
+    user
+  });
+
+  const attributes = PRODUCT_CSV_COLUMNS.map((column) => column.key);
+
+  stream.write('﻿');
+  stream.write(`${PRODUCT_CSV_COLUMNS.map((column) => column.header).join(',')}\n`);
+
+  let lastId = 0;
+
+  while (true) {
+    const rows = await Product.findAll({
+      where: {
+        ...where,
+        id: {
+          [Op.gt]: lastId
+        }
+      },
+      attributes,
+      order: [['id', 'ASC']],
+      limit: CSV_EXPORT_BATCH_SIZE,
+      raw: true
+    });
+
+    if (rows.length === 0) {
+      break;
+    }
+
+    rows.forEach((row) => {
+      stream.write(buildCsvRow(PRODUCT_CSV_COLUMNS, row));
+    });
+
+    lastId = rows[rows.length - 1].id;
+  }
 };
 
 const validateProductData = (data) => {
@@ -445,5 +553,6 @@ module.exports = {
   listProducts,
   getProductById,
   createProduct,
-  updateProduct
+  updateProduct,
+  exportProductsCsv
 };

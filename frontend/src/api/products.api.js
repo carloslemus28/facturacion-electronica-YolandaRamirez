@@ -22,3 +22,12 @@ export const updateProductRequest = async (id, productData) => {
   const response = await api.put(`/products/${id}`, productData);
   return response.data;
 };
+
+export const exportProductsCsvRequest = async (params = {}) => {
+  const response = await api.get('/products/export/csv', {
+    params,
+    responseType: 'blob'
+  });
+
+  return response;
+};

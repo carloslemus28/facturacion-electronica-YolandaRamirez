@@ -22,3 +22,12 @@ export const updateCustomerRequest = async (id, customerData) => {
   const response = await api.put(`/customers/${id}`, customerData);
   return response.data;
 };
+
+export const exportCustomersCsvRequest = async (params = {}) => {
+  const response = await api.get('/customers/export/csv', {
+    params,
+    responseType: 'blob'
+  });
+
+  return response;
+};

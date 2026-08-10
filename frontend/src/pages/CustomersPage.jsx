@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import toast from 'react-hot-toast';
 import {
   AlertTriangle,
+  Download,
   Edit,
   Loader2,
   Plus,
@@ -23,6 +24,7 @@ import examples from 'libphonenumber-js/examples.mobile.json';
 
 import {
   createCustomerRequest,
+  exportCustomersCsvRequest,
   getCustomersRequest,
   updateCustomerRequest
 } from '../api/customers.api';
@@ -138,6 +140,7 @@ function CustomersPage() {
 
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [exporting, setExporting] = useState(false);
 
   const [showNoActivityModal, setShowNoActivityModal] = useState(false);
   const [confirmedWithoutActivity, setConfirmedWithoutActivity] = useState(false);
@@ -546,6 +549,46 @@ const handlePhoneCountryChange = (country) => {
     await loadCustomers();
   };
 
+  const downloadCsvResponse = (response, defaultFilename) => {
+    const disposition = response.headers?.['content-disposition'] || '';
+    const filenameMatch = disposition.match(/filename="?([^";]+)"?/i);
+    const filename = filenameMatch?.[1] || defaultFilename;
+    const url = window.URL.createObjectURL(new Blob([response.data], {
+      type: 'text/csv;charset=utf-8'
+    }));
+    const link = document.createElement('a');
+
+    link.href = url;
+    link.setAttribute('download', filename);
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    window.URL.revokeObjectURL(url);
+  };
+
+  const handleExportCsv = async () => {
+    try {
+      setExporting(true);
+
+      const params = {
+        q
+      };
+
+      if (activeFilter !== '') {
+        params.isActive = activeFilter;
+      }
+
+      const response = await exportCustomersCsvRequest(params);
+      downloadCsvResponse(response, `clientes-${new Date().toISOString().slice(0, 10)}.csv`);
+      toast.success('Listado de clientes descargado correctamente');
+    } catch (error) {
+      console.error('Error descargando clientes:', error);
+      toast.error('No se pudo descargar el listado de clientes');
+    } finally {
+      setExporting(false);
+    }
+  };
+
   return (
     <div>
       {showNoActivityModal && (
@@ -604,14 +647,26 @@ const handlePhoneCountryChange = (country) => {
           </div>
         </div>
 
-        <button
-          type="button"
-          onClick={loadCustomers}
-          className="inline-flex items-center justify-center gap-2 bg-white border rounded-xl px-4 py-3 text-gray-700 hover:bg-gray-50"
-        >
-          <RefreshCcw size={18} />
-          Actualizar
-        </button>
+        <div className="flex flex-col sm:flex-row gap-3">
+          <button
+            type="button"
+            onClick={handleExportCsv}
+            disabled={exporting}
+            className="inline-flex items-center justify-center gap-2 bg-emerald-700 text-white rounded-xl px-4 py-3 font-semibold hover:bg-emerald-600 disabled:opacity-70"
+          >
+            {exporting ? <Loader2 className="animate-spin" size={18} /> : <Download size={18} />}
+            Descargar CSV
+          </button>
+
+          <button
+            type="button"
+            onClick={loadCustomers}
+            className="inline-flex items-center justify-center gap-2 bg-white border rounded-xl px-4 py-3 text-gray-700 hover:bg-gray-50"
+          >
+            <RefreshCcw size={18} />
+            Actualizar
+          </button>
+        </div>
       </section>
 
       <section className="grid xl:grid-cols-[500px_1fr] gap-6">
