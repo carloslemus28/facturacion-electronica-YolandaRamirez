@@ -18,6 +18,7 @@ import {
   getProductsRequest,
   updateProductRequest
 } from '../api/products.api';
+import { useAuth } from '../context/AuthContext';
 
 const initialForm = {
   code: '',
@@ -46,6 +47,7 @@ const unitOptions = [
 ];
 
 function ProductsPage() {
+  const { user } = useAuth();
   const [products, setProducts] = useState([]);
   const [form, setForm] = useState(initialForm);
   const [editingId, setEditingId] = useState(null);
@@ -58,6 +60,7 @@ function ProductsPage() {
   const [exporting, setExporting] = useState(false);
 
   const isEditing = Boolean(editingId);
+  const isAdmin = user?.roles?.includes('ADMIN');
   const isService = form.itemType === 'SERVICIO';
 
   const loadProducts = async () => {
@@ -258,6 +261,11 @@ function ProductsPage() {
   };
 
   const handleExportCsv = async () => {
+    if (!isAdmin) {
+      toast.error('Solo el usuario administrador puede descargar este CSV');
+      return;
+    }
+
     try {
       setExporting(true);
 
@@ -305,15 +313,17 @@ function ProductsPage() {
         </div>
 
         <div className="flex flex-col sm:flex-row gap-3">
-          <button
-            type="button"
-            onClick={handleExportCsv}
-            disabled={exporting}
-            className="inline-flex items-center justify-center gap-2 bg-emerald-700 text-white rounded-xl px-4 py-3 font-semibold hover:bg-emerald-600 disabled:opacity-70"
-          >
-            {exporting ? <Loader2 className="animate-spin" size={18} /> : <Download size={18} />}
-            Descargar CSV
-          </button>
+          {isAdmin && (
+            <button
+              type="button"
+              onClick={handleExportCsv}
+              disabled={exporting}
+              className="inline-flex items-center justify-center gap-2 bg-emerald-700 text-white rounded-xl px-4 py-3 font-semibold hover:bg-emerald-600 disabled:opacity-70"
+            >
+              {exporting ? <Loader2 className="animate-spin" size={18} /> : <Download size={18} />}
+              Descargar CSV
+            </button>
+          )}
 
           <button
             type="button"

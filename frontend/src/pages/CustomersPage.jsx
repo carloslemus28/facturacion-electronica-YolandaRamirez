@@ -33,6 +33,7 @@ import SearchableSelect from '../components/SearchableSelect';
 import { economicActivities } from '../data/economicActivities';
 import { elSalvadorDepartments } from '../data/elSalvadorDepartments';
 import { elSalvadorLocations } from '../data/elSalvadorLocations';
+import { useAuth } from '../context/AuthContext';
 
 const getCountryName = (countryCode) => {
   try {
@@ -131,6 +132,7 @@ const getMaxNationalPhoneLength = (countryCode) => {
 };
 
 function CustomersPage() {
+  const { user } = useAuth();
   const [customers, setCustomers] = useState([]);
   const [form, setForm] = useState(initialForm);
   const [editingId, setEditingId] = useState(null);
@@ -146,6 +148,7 @@ function CustomersPage() {
   const [confirmedWithoutActivity, setConfirmedWithoutActivity] = useState(false);
 
   const isEditing = Boolean(editingId);
+  const isAdmin = user?.roles?.includes('ADMIN');
 
   const selectedDepartment = useMemo(() => {
     return elSalvadorDepartments.find(
@@ -567,6 +570,11 @@ const handlePhoneCountryChange = (country) => {
   };
 
   const handleExportCsv = async () => {
+    if (!isAdmin) {
+      toast.error('Solo el usuario administrador puede descargar este CSV');
+      return;
+    }
+
     try {
       setExporting(true);
 
@@ -648,15 +656,17 @@ const handlePhoneCountryChange = (country) => {
         </div>
 
         <div className="flex flex-col sm:flex-row gap-3">
-          <button
-            type="button"
-            onClick={handleExportCsv}
-            disabled={exporting}
-            className="inline-flex items-center justify-center gap-2 bg-emerald-700 text-white rounded-xl px-4 py-3 font-semibold hover:bg-emerald-600 disabled:opacity-70"
-          >
-            {exporting ? <Loader2 className="animate-spin" size={18} /> : <Download size={18} />}
-            Descargar CSV
-          </button>
+          {isAdmin && (
+            <button
+              type="button"
+              onClick={handleExportCsv}
+              disabled={exporting}
+              className="inline-flex items-center justify-center gap-2 bg-emerald-700 text-white rounded-xl px-4 py-3 font-semibold hover:bg-emerald-600 disabled:opacity-70"
+            >
+              {exporting ? <Loader2 className="animate-spin" size={18} /> : <Download size={18} />}
+              Descargar CSV
+            </button>
+          )}
 
           <button
             type="button"
