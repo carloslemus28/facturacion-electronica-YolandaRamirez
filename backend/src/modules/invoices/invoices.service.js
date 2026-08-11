@@ -1609,6 +1609,82 @@ const listInvoices = async ({ user, startDate, endDate }) => {
   return invoices;
 };
 
+const countInvoicesForDteFilesExport = async ({ user, startDate, endDate }) => {
+  const currentUser = await resolveUserContext(user);
+
+  if (!currentUser?.company) {
+    const error = new Error('El usuario no tiene empresa emisora asignada');
+    error.statusCode = 400;
+    throw error;
+  }
+
+  if (!isAdminUser(currentUser)) {
+    const error = new Error('Solo el usuario administrador puede descargar todos los JSON y PDF');
+    error.statusCode = 403;
+    throw error;
+  }
+
+  return Invoice.count({
+    where: {
+      companyId: currentUser.company.id,
+      issuedAt: getIssuedAtRangeForList({
+        startDate,
+        endDate
+      })
+    }
+  });
+};
+
+const listInvoicesForDteFilesExport = async ({
+  user,
+  startDate,
+  endDate,
+  limit = 25,
+  offset = 0
+}) => {
+  const currentUser = await resolveUserContext(user);
+
+  if (!currentUser?.company) {
+    const error = new Error('El usuario no tiene empresa emisora asignada');
+    error.statusCode = 400;
+    throw error;
+  }
+
+  if (!isAdminUser(currentUser)) {
+    const error = new Error('Solo el usuario administrador puede descargar todos los JSON y PDF');
+    error.statusCode = 403;
+    throw error;
+  }
+
+  const safeLimit = Math.min(Math.max(Number(limit) || 25, 1), 100);
+  const safeOffset = Math.max(Number(offset) || 0, 0);
+
+  return Invoice.findAll({
+    attributes: [
+      'id',
+      'controlNumber',
+      'generationCode',
+      'documentTypeCode',
+      'status',
+      'issuedAt'
+    ],
+    where: {
+      companyId: currentUser.company.id,
+      issuedAt: getIssuedAtRangeForList({
+        startDate,
+        endDate
+      })
+    },
+    order: [
+      ['documentTypeCode', 'ASC'],
+      [literal("CAST(SUBSTRING_INDEX(`Invoice`.`control_number`, '-', -1) AS UNSIGNED)"), 'DESC'],
+      ['id', 'DESC']
+    ],
+    limit: safeLimit,
+    offset: safeOffset,
+    raw: true
+  });
+};
 const getInvoiceById = async (id, options = {}) => {
   const { user = null } = options;
 
@@ -2208,6 +2284,8 @@ module.exports = {
   createGeneratedInvoice,
   updateGeneratedInvoice,
   listInvoices,
+  countInvoicesForDteFilesExport,
+  listInvoicesForDteFilesExport,
   getInvoiceById,
   getDashboardSummary,
   listAvailableDocumentsForCreditNote,

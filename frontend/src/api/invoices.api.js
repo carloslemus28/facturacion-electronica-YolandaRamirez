@@ -89,6 +89,14 @@ export const downloadDtePdfRequest = async (id, type = 'document') => {
   return response;
 };
 
+export const downloadDteFilesZipRequest = async (params = {}) => {
+  const response = await api.get('/invoices/export/files', {
+    params,
+    responseType: 'blob'
+  });
+
+  return response;
+};
 export const sendInvoiceEmailRequest = async (id, emailData) => {
   const response = await api.post(`/emails/invoices/${id}/send`, emailData);
   return response.data;

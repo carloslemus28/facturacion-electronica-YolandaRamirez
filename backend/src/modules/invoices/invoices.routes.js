@@ -20,6 +20,12 @@ router.get(
 );
 
 router.get(
+  '/export/files',
+  authenticate,
+  authorize('INVOICES_VIEW'),
+  invoicesController.exportDteFilesZip
+);
+router.get(
   '/credit-note/available-documents',
   authenticate,
   authorize('INVOICES_CREATE'),

@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useAuth } from '../context/AuthContext';
 import toast from 'react-hot-toast';
 import {
   AlertTriangle,
@@ -26,6 +27,7 @@ import {
 } from '../api/dteEvents.api';
 
 import {
+  downloadDteFilesZipRequest,
   downloadDteJsonRequest,
   downloadDtePdfRequest,
   getDteJsonRequest,
@@ -127,6 +129,7 @@ function InvoicesPage() {
   const [loading, setLoading] = useState(true);
   const [loadingDetail, setLoadingDetail] = useState(false);
   const [processingId, setProcessingId] = useState(null);
+  const [bulkFilesDownloading, setBulkFilesDownloading] = useState(false);
 
   const [jsonModalOpen, setJsonModalOpen] = useState(false);
   const [jsonModalTitle, setJsonModalTitle] = useState('');
@@ -163,6 +166,9 @@ function InvoicesPage() {
   const [returnReason, setReturnReason] = useState('Retorno de bienes o servicios según operación relacionada');
   const [returnTransmitNow, setReturnTransmitNow] = useState(true);
   const navigate = useNavigate();
+  const { user } = useAuth();
+
+  const isAdminUser = Array.isArray(user?.roles) && user.roles.includes('ADMIN');
 
   const loadInvoices = async (range = appliedDateRange) => {
     try {
@@ -453,6 +459,33 @@ const getDocumentTypeOrder = (documentTypeCode) => {
     }
   };
 
+  const downloadAllDteFiles = async () => {
+    if (!isAdminUser) {
+      toast.error('Solo el administrador puede descargar todos los JSON y PDF');
+      return;
+    }
+
+    try {
+      setBulkFilesDownloading(true);
+
+      const response = await downloadDteFilesZipRequest({
+        startDate: appliedDateRange.startDate,
+        endDate: appliedDateRange.endDate
+      });
+
+      const start = appliedDateRange.startDate || 'inicio';
+      const end = appliedDateRange.endDate || 'fin';
+
+      downloadBlob(response.data, `DTE-JSON-PDF-${start}_${end}.zip`);
+      toast.success('ZIP de JSON y PDF descargado correctamente');
+    } catch (error) {
+      console.error('Error descargando ZIP de DTE:', error);
+      const message = error.response?.data?.message || 'No se pudo descargar el ZIP de JSON y PDF';
+      toast.error(message);
+    } finally {
+      setBulkFilesDownloading(false);
+    }
+  };
   const downloadJson = async (invoice, type = 'document') => {
     try {
       setJsonProcessingId(`${type}-${invoice.id}`);
@@ -2128,13 +2161,27 @@ const renderEmailLogAttachments = (attachmentsJson) => {
           </div>
         </div>
 
-        <button
-          onClick={() => loadInvoices()}
-          className="inline-flex items-center justify-center gap-2 bg-white border rounded-xl px-4 py-3 text-gray-700 hover:bg-gray-50"
-        >
-          <RefreshCcw size={18} />
-          Actualizar
-        </button>
+        <div className="flex flex-col sm:flex-row gap-2">
+          {isAdminUser && (
+            <button
+              type="button"
+              onClick={downloadAllDteFiles}
+              disabled={bulkFilesDownloading || loading}
+              className="inline-flex items-center justify-center gap-2 bg-blue-900 text-white rounded-xl px-4 py-3 font-semibold hover:bg-blue-800 disabled:opacity-70"
+            >
+              {bulkFilesDownloading ? <Loader2 className="animate-spin" size={18} /> : <Download size={18} />}
+              Descargar JSON/PDF
+            </button>
+          )}
+
+          <button
+            onClick={() => loadInvoices()}
+            className="inline-flex items-center justify-center gap-2 bg-white border rounded-xl px-4 py-3 text-gray-700 hover:bg-gray-50"
+          >
+            <RefreshCcw size={18} />
+            Actualizar
+          </button>
+        </div>
       </section>
 
       {generatedCount > 0 && (
